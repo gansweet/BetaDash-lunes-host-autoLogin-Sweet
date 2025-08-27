@@ -109,15 +109,6 @@ async function main() {
     const successHint = await page.locator('text=/Dashboard|Logout|Sign out|控制台|面板/i').first().count();
     const stillOnLogin = /\/auth\/login/i.test(url);
 
-    // 检查人机验证
-    const humanCheckText = await page.locator('text=/Verify you are human|需要验证|安全检查|review the security/i').first();
-    if (await humanCheckText.count()) {
-      const sp = screenshot('01-human-check');
-      await page.screenshot({ path: sp, fullPage: true });
-      await notifyTelegram({ ok: false, stage: '打开登录页', msg: '检测到人机验证页面', screenshotPath: sp });
-      process.exitCode = 2;
-      return;
-    }
     
     if (!stillOnLogin || successHint > 0) {
       await notifyTelegram({ ok: true, stage: '登录成功', msg: `当前 URL：${url}`, screenshotPath: spAfter });
@@ -127,6 +118,33 @@ async function main() {
       return;
     }
 
+    // 检查人机验证
+    const humanCheckText = await page.locator('text=/Verify you are human|需要验证|安全检查|review the security/i').first();
+    if (await humanCheckText.count()) {
+      const sp = screenshot('01-human-check');
+      await page.screenshot({ path: sp, fullPage: true });
+      await notifyTelegram({ ok: false, stage: '打开登录页', msg: '检测到人机验证页面', screenshotPath: sp });
+      process.exitCode = 2;
+      return;
+    }
+
+     // 3) 登录结果截图
+    const spAfter = screenshot('03-after-submit');
+    await page.screenshot({ path: spAfter, fullPage: true });
+
+    const url = page.url();
+    const successHint = await page.locator('text=/Dashboard|Logout|Sign out|控制台|面板/i').first().count();
+    const stillOnLogin = /\/auth\/login/i.test(url);
+
+    
+    if (!stillOnLogin || successHint > 0) {
+      await notifyTelegram({ ok: true, stage: '登录成功', msg: `当前 URL：${url}`, screenshotPath: spAfter });
+
+      
+      process.exitCode = 0;
+      return;
+    }
+    
     // 登录失败处理
     const errorMsgNode = page.locator('text=/Invalid|incorrect|错误|失败|无效/i');
     const hasError = await errorMsgNode.count();
