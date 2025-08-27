@@ -1,134 +1,80 @@
-// scripts/login.js
-import { chromium } from '@playwright/test';
+import puppeteer from 'puppeteer';
 import fs from 'fs';
+import fetch from 'node-fetch';
 import FormData from 'form-data';
 
-const LOGIN_URL = 'https://betadash.lunes.host/login?next=/servers/35991';
-const SERVER_URL = 'https://betadash.lunes.host/servers/35991';
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const LOGIN_URL = process.env.LOGIN_URL || 'https://betadash.lunes.host/login';
+const USERNAME = process.env.LOGIN_USERNAME;
+const PASSWORD = process.env.LOGIN_PASSWORD;
 
-// Telegram 通知
-async function notifyTelegram({ ok, stage, msg, screenshotPath }) {
-  try {
-    const token = process.env.TELEGRAM_BOT_TOKEN;
-    const chatId = process.env.TELEGRAM_CHAT_ID;
-    if (!token || !chatId) {
-      console.log('[WARN] TELEGRAM_BOT_TOKEN 或 TELEGRAM_CHAT_ID 未设置，跳过通知');
-      return;
-    }
-
-    const text = [
-      `🔔 Lunes 自动操作：${ok ? '✅ 成功' : '❌ 失败'}`,
-      `阶段：${stage}`,
-      msg ? `信息：${msg}` : '',
-      `时间：${new Date().toISOString()}`
-    ].filter(Boolean).join('\n');
-
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        disable_web_page_preview: true
-      })
+async function sendTelegramMessage(text) {
+    const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+    await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            chat_id: TELEGRAM_CHAT_ID,
+            text: text,
+            parse_mode: 'Markdown'
+        })
     });
-
-    if (screenshotPath && fs.existsSync(screenshotPath)) {
-      const photoUrl = `https://api.telegram.org/bot${token}/sendPhoto`;
-      const form = new FormData();
-      form.append('chat_id', chatId);
-      form.append('caption', `Lunes 自动操作截图（${stage}）`);
-      form.append('photo', fs.createReadStream(screenshotPath));
-      await fetch(photoUrl, { method: 'POST', body: form });
-    }
-  } catch (e) {
-    console.log('[WARN] Telegram 通知失败：', e.message);
-  }
 }
 
-function envOrThrow(name) {
-  const v = process.env[name];
-  if (!v) throw new Error(`环境变量 ${name} 未设置`);
-  return v;
+async function sendTelegramPhoto(filePath, caption = '') {
+    const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`;
+    const formData = new FormData();
+    formData.append('chat_id', TELEGRAM_CHAT_ID);
+    formData.append('photo', fs.createReadStream(filePath));
+    formData.append('caption', caption);
+
+    await fetch(url, { method: 'POST', body: formData });
 }
 
-async function main() {
-  const email = envOrThrow('LUNES_USERNAME');
-  const password = envOrThrow('LUNES_PASSWORD');
+(async () => {
+    let browser;
+    try {
+        browser = await puppeteer.launch({
+            headless: 'new',
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+        });
 
-  const browser = await chromium.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
-  });
+        const page = await browser.newPage();
+        await page.goto(LOGIN_URL, { waitUntil: 'networkidle2' });
 
-  const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });
-  const page = await context.newPage();
+        await page.type('input[name="username"]', USERNAME);
+        await page.type('input[name="password"]', PASSWORD);
+        await Promise.all([
+            page.click('button[type="submit"]'),
+            page.waitForNavigation({ waitUntil: 'networkidle2' })
+        ]);
 
-  const screenshot = (name) => `./${name}.png`;
+        const currentUrl = page.url();
+        if (currentUrl.includes('/dashboard')) {
+            await sendTelegramMessage(`✅ 登录成功: ${currentUrl}`);
+        } else {
+            throw new Error('登录失败，未进入 Dashboard 页面');
+        }
 
-  try {
-    // 打开登录页
-    await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-    const spOpen = screenshot('01-open-login');
-    await page.screenshot({ path: spOpen, fullPage: true });
+    } catch (error) {
+        console.error('登录过程出错:', error.message);
 
-    // 填写 Email 和 Password
-    const emailInput = page.locator('input[name="email"]');
-    const passInput = page.locator('input[name="password"]');
-    await emailInput.waitFor({ state: 'visible', timeout: 30_000 });
-    await passInput.waitFor({ state: 'visible', timeout: 30_000 });
+        const screenshotPath = 'login-error.png';
+        if (browser) {
+            const pages = await browser.pages();
+            if (pages.length > 0) {
+                await pages[0].screenshot({ path: screenshotPath, fullPage: true });
+                await sendTelegramPhoto(screenshotPath, `❌ 登录失败，错误信息:\n${error.message}`);
+            }
+        } else {
+            await sendTelegramMessage(`❌ 登录失败，无法截图，错误信息:\n${error.message}`);
+        }
 
-    await emailInput.fill(email);
-    await passInput.fill(password);
-
-    const loginBtn = page.locator('button[type="submit"]');
-    await loginBtn.waitFor({ state: 'visible', timeout: 15_000 });
-
-    const spBefore = screenshot('02-before-submit');
-    await page.screenshot({ path: spBefore, fullPage: true });
-
-    await Promise.all([
-      page.waitForNavigation({ waitUntil: 'networkidle', timeout: 30_000 }),
-      loginBtn.click({ timeout: 10_000 })
-    ]);
-
-    // 登录完成截图
-    const spAfter = screenshot('03-after-submit');
-    await page.screenshot({ path: spAfter, fullPage: true });
-
-    const url = page.url();
-    if (url.startsWith(SERVER_URL)) {
-      await notifyTelegram({ ok: true, stage: '登录成功', msg: `已跳转到 ${url}`, screenshotPath: spAfter });
-    } else {
-      await notifyTelegram({ ok: false, stage: '登录失败', msg: `当前 URL：${url}`, screenshotPath: spAfter });
-      process.exitCode = 1;
-      return;
+        process.exit(1);
+    } finally {
+        if (browser) {
+            await browser.close();
+        }
     }
-
-    // 进入服务器页面再截图
-    const spServer = screenshot('04-server-page');
-    await page.waitForLoadState('networkidle', { timeout: 30_000 });
-    await page.screenshot({ path: spServer, fullPage: true });
-    await notifyTelegram({ ok: true, stage: '服务器详情', msg: '已成功进入服务器页面', screenshotPath: spServer });
-
-    // 可选逻辑：如果有 Restart 按钮
-    const restartBtn = page.locator('button:has-text("Restart")');
-    if (await restartBtn.count()) {
-      await restartBtn.click();
-      await notifyTelegram({ ok: true, stage: '点击 Restart', msg: 'VPS 重启中' });
-      await page.waitForTimeout(10000);
-    }
-
-    process.exitCode = 0;
-  } catch (e) {
-    const spError = screenshot('99-error');
-    try { await page.screenshot({ path: spError, fullPage: true }); } catch {}
-    await notifyTelegram({ ok: false, stage: '异常', msg: e?.message || String(e), screenshotPath: fs.existsSync(spError) ? spError : undefined });
-    process.exitCode = 1;
-  } finally {
-    await context.close();
-    await browser.close();
-  }
-}
-
-await main();
+})();
