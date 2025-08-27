@@ -99,15 +99,7 @@ async function main() {
       loginBtn.click({ timeout: 10_000 })
     ]);
 
-    // 3) 登录结果截图
-    const spAfter = screenshot('03-after-submit');
-    await page.screenshot({ path: spAfter, fullPage: true });
-
-    const url = page.url();
-    const successHint = await page.locator('text=/Dashboard|Logout|Sign out|控制台|面板/i').first().count();
-    const stillOnLogin = /\/auth\/login/i.test(url);
-
-    // 检查人机验证
+   // 检查人机验证
     const humanCheckText = await page.locator('text=/Verify you are human|需要验证|安全检查|review the security/i').first();
     if (await humanCheckText.count()) {
       const sp = screenshot('01-human-check');
@@ -117,11 +109,18 @@ async function main() {
       return;
     }
     
+    // 3) 登录结果截图
+    const spAfter = screenshot('03-after-submit');
+    await page.screenshot({ path: spAfter, fullPage: true });
+
+    const url = page.url();
+    const successHint = await page.locator('text=/Dashboard|Logout|Sign out|控制台|面板/i').first().count();
+    const stillOnLogin = /\/auth\/login/i.test(url);
+    
     if (!stillOnLogin || successHint > 0) {
       await notifyTelegram({ ok: true, stage: '登录成功', msg: `当前 URL：${url}`, screenshotPath: spAfter });
 
       
-
       process.exitCode = 0;
       return;
     }
