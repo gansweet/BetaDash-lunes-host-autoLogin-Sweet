@@ -6,7 +6,7 @@ import FormData from 'form-data';
 const LOGIN_URL = 'https://betadash.lunes.host/login?next=/servers/35991';
 const SERVER_URL = 'https://betadash.lunes.host/servers/35991';
 
-// Telegram 通知函数
+// Telegram 通知
 async function notifyTelegram({ ok, stage, msg, screenshotPath }) {
   try {
     const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -33,7 +33,6 @@ async function notifyTelegram({ ok, stage, msg, screenshotPath }) {
       })
     });
 
-    // 如果有截图，再发图
     if (screenshotPath && fs.existsSync(screenshotPath)) {
       const photoUrl = `https://api.telegram.org/bot${token}/sendPhoto`;
       const form = new FormData();
@@ -68,7 +67,7 @@ async function main() {
   const screenshot = (name) => `./${name}.png`;
 
   try {
-    // 1) 打开登录页
+    // 打开登录页
     await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 60_000 });
     const spOpen = screenshot('01-open-login');
     await page.screenshot({ path: spOpen, fullPage: true });
@@ -93,7 +92,7 @@ async function main() {
       loginBtn.click({ timeout: 10_000 })
     ]);
 
-    // 2) 登录完成截图
+    // 登录完成截图
     const spAfter = screenshot('03-after-submit');
     await page.screenshot({ path: spAfter, fullPage: true });
 
@@ -106,13 +105,13 @@ async function main() {
       return;
     }
 
-    // 3) 进入服务器页面再截图
+    // 进入服务器页面再截图
     const spServer = screenshot('04-server-page');
     await page.waitForLoadState('networkidle', { timeout: 30_000 });
     await page.screenshot({ path: spServer, fullPage: true });
     await notifyTelegram({ ok: true, stage: '服务器详情', msg: '已成功进入服务器页面', screenshotPath: spServer });
 
-    // 可选逻辑：如果页面有 Console，可以点击 Restart + 输入命令
+    // 可选逻辑：如果有 Restart 按钮
     const restartBtn = page.locator('button:has-text("Restart")');
     if (await restartBtn.count()) {
       await restartBtn.click();
