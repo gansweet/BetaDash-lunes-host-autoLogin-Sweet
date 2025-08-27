@@ -2,9 +2,9 @@ import fs from 'fs';
 import fetch from 'node-fetch';
 import FormData from 'form-data';
 import { chromium } from 'playwright-extra';
-import StealthPlugin from 'playwright-extra-plugin-stealth';
+import stealth from 'playwright-stealth';
 
-chromium.use(StealthPlugin());
+chromium.use(stealth());
 
 const LOGIN_URL = 'https://betadash.lunes.host/login?next=/servers/35991';
 
@@ -67,12 +67,12 @@ async function main() {
   try {
     await page.goto(LOGIN_URL, { waitUntil: 'networkidle', timeout: 90_000 });
 
-    // 检测 Cloudflare 验证
+    // 检测 Cloudflare 验证（最多重试 3 次，每次等待 10 秒）
     let retry = 0;
     while (retry < 3) {
       const cfText = await page.locator('text=/Verify you are human|review the security|正在检查/i').first();
       if (await cfText.count()) {
-        console.log(`[INFO] 检测到 Cloudflare 验证，等待 10 秒后重试...`);
+        console.log(`[INFO] 检测到 Cloudflare 验证，等待 10 秒后重试 (${retry + 1}/3)...`);
         await page.waitForTimeout(10_000);
         retry++;
         continue;
