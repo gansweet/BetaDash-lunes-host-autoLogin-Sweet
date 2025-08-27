@@ -107,6 +107,16 @@ async function main() {
     const successHint = await page.locator('text=/Dashboard|Logout|Sign out|控制台|面板/i').first().count();
     const stillOnLogin = /\/auth\/login/i.test(url);
 
+    // 检查人机验证
+    const humanCheckText = await page.locator('text=/Verify you are human|需要验证|安全检查|review the security/i').first();
+    if (await humanCheckText.count()) {
+      const sp = screenshot('01-human-check');
+      await page.screenshot({ path: sp, fullPage: true });
+      await notifyTelegram({ ok: false, stage: '打开登录页', msg: '检测到人机验证页面', screenshotPath: sp });
+      process.exitCode = 2;
+      return;
+    }
+    
     if (!stillOnLogin || successHint > 0) {
       await notifyTelegram({ ok: true, stage: '登录成功', msg: `当前 URL：${url}`, screenshotPath: spAfter });
 
