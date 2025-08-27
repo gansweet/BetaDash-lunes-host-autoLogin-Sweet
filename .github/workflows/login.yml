@@ -1,15 +1,16 @@
-name: Auto Login Lunes（keepalive-sweet-n6-US)
+name: BetaDash Auto Login
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 23 * * *" # 每天7时运行一次
+    - cron: "0 */6 * * *" # 每6小时执行一次
 
 jobs:
-  login:
+  auto-login:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Node.js
@@ -22,10 +23,11 @@ jobs:
           npm install
           npx playwright install --with-deps chromium
 
-      - name: Run login script
+      - name: Run auto login script
         env:
           LUNES_USERNAME: ${{ secrets.LUNES_USERNAME }}
           LUNES_PASSWORD: ${{ secrets.LUNES_PASSWORD }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: node scripts/login.js
+        run: |
+          node scripts/login.js
