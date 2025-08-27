@@ -5,7 +5,7 @@ import FormData from 'form-data';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
-const LOGIN_URL = process.env.LOGIN_URL || 'https://betadash.lunes.host/login';
+const LOGIN_URL = process.env.LOGIN_URL || 'https://betadash.lunes.host/login?next=/servers/35991';
 const USERNAME = process.env.LOGIN_USERNAME;
 const PASSWORD = process.env.LOGIN_PASSWORD;
 
