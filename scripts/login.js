@@ -6,8 +6,8 @@ import FormData from 'form-data';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const LOGIN_URL = process.env.LOGIN_URL || 'https://betadash.lunes.host/login';
-const USERNAME = process.env.LUNES_USERNAME;
-const PASSWORD = process.env.LUNES_PASSWORD;
+const USERNAME = process.env.LOGIN_USERNAME;
+const PASSWORD = process.env.LOGIN_PASSWORD;
 
 async function sendTelegramMessage(text) {
     const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
@@ -43,23 +43,31 @@ async function sendTelegramPhoto(filePath, caption = '') {
         const page = await browser.newPage();
         await page.goto(LOGIN_URL, { waitUntil: 'networkidle2' });
 
-        await page.type('input[placeholder="username"]', USERNAME);
-        await page.type('input[placeholder="password"]', PASSWORD);
+        // ✅ 改正选择器
+        await page.waitForSelector('input[name="email"]', { timeout: 30000 });
+        await page.type('input[name="email"]', USERNAME);
+
+        await page.waitForSelector('input[name="password"]', { timeout: 30000 });
+        await page.type('input[name="password"]', PASSWORD);
+
         await Promise.all([
             page.click('button[type="submit"]'),
             page.waitForNavigation({ waitUntil: 'networkidle2' })
         ]);
 
         const currentUrl = page.url();
+        const screenshotPath = 'login-success.png';
+        await page.screenshot({ path: screenshotPath, fullPage: true });
+
         if (currentUrl.includes('/dashboard')) {
             await sendTelegramMessage(`✅ 登录成功: ${currentUrl}`);
+            await sendTelegramPhoto(screenshotPath, '登录成功截图');
         } else {
             throw new Error('登录失败，未进入 Dashboard 页面');
         }
 
     } catch (error) {
         console.error('登录过程出错:', error.message);
-
         const screenshotPath = 'login-error.png';
         if (browser) {
             const pages = await browser.pages();
