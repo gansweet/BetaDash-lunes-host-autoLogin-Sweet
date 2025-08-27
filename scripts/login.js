@@ -1,6 +1,10 @@
-// scripts/login.js
-import { chromium } from '@playwright/test';
 import fs from 'fs';
+import fetch from 'node-fetch';
+import FormData from 'form-data';
+import { chromium } from 'playwright-extra';
+import StealthPlugin from 'playwright-extra-plugin-stealth';
+
+chromium.use(StealthPlugin());
 
 const LOGIN_URL = 'https://betadash.lunes.host/login?next=/servers/35991';
 
@@ -9,10 +13,7 @@ async function notifyTelegram({ ok, stage, msg, screenshotPath }) {
   try {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
-    if (!token || !chatId) {
-      console.log('[WARN] TELEGRAM_BOT_TOKEN 或 TELEGRAM_CHAT_ID 未设置，跳过通知');
-      return;
-    }
+    if (!token || !chatId) return;
 
     const text = [
       `🔔 Lunes 自动操作：${ok ? '✅ 成功' : '❌ 失败'}`,
@@ -24,20 +25,15 @@ async function notifyTelegram({ ok, stage, msg, screenshotPath }) {
     await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        disable_web_page_preview: true
-      })
+      body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true })
     });
 
-    // 如果有截图，再发图
     if (screenshotPath && fs.existsSync(screenshotPath)) {
       const photoUrl = `https://api.telegram.org/bot${token}/sendPhoto`;
       const form = new FormData();
       form.append('chat_id', chatId);
       form.append('caption', `Lunes 自动操作截图（${stage}）`);
-      form.append('photo', new Blob([fs.readFileSync(screenshotPath)]), 'screenshot.png');
+      form.append('photo', fs.createReadStream(screenshotPath));
       await fetch(photoUrl, { method: 'POST', body: form });
     }
   } catch (e) {
@@ -60,77 +56,68 @@ async function main() {
     args: ['--no-sandbox', '--disable-setuid-sandbox']
   });
 
-  const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+  const context = await browser.newContext({
+    viewport: { width: 1366, height: 768 },
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36'
+  });
   const page = await context.newPage();
 
   const screenshot = (name) => `./${name}.png`;
 
   try {
-    // 1) 打开登录页
-    await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+    await page.goto(LOGIN_URL, { waitUntil: 'networkidle', timeout: 90_000 });
 
-    // 检查人机验证
-    const humanCheckText = await page.locator('text=/Verify you are human|需要验证|安全检查|review the security/i').first();
-    if (await humanCheckText.count()) {
+    // 检测 Cloudflare 验证
+    let retry = 0;
+    while (retry < 3) {
+      const cfText = await page.locator('text=/Verify you are human|review the security|正在检查/i').first();
+      if (await cfText.count()) {
+        console.log(`[INFO] 检测到 Cloudflare 验证，等待 10 秒后重试...`);
+        await page.waitForTimeout(10_000);
+        retry++;
+        continue;
+      }
+      break;
+    }
+
+    if (retry >= 3) {
       const sp = screenshot('01-human-check');
       await page.screenshot({ path: sp, fullPage: true });
-      await notifyTelegram({ ok: false, stage: '打开登录页', msg: '检测到人机验证页面', screenshotPath: sp });
+      await notifyTelegram({ ok: false, stage: '打开登录页', msg: 'Cloudflare 验证无法通过', screenshotPath: sp });
       process.exitCode = 2;
       return;
     }
 
-    // 2) 输入用户名密码
-    const userInput = page.locator('input[name="username"]');
-    const passInput = page.locator('input[name="password"]');
-    await userInput.waitFor({ state: 'visible', timeout: 30_000 });
-    await passInput.waitFor({ state: 'visible', timeout: 30_000 });
-
-    await userInput.fill(username);
-    await passInput.fill(password);
-
-    const loginBtn = page.locator('button[type="submit"]');
-    await loginBtn.waitFor({ state: 'visible', timeout: 15_000 });
+    // 输入账号密码
+    await page.locator('input[name="username"]').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.fill('input[name="username"]', username);
+    await page.fill('input[name="password"]', password);
 
     const spBefore = screenshot('02-before-submit');
     await page.screenshot({ path: spBefore, fullPage: true });
 
     await Promise.all([
-      page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => {}),
-      loginBtn.click({ timeout: 10_000 })
+      page.waitForLoadState('networkidle', { timeout: 30_000 }),
+      page.click('button[type="submit"]', { timeout: 10_000 })
     ]);
 
-    // 3) 登录结果截图
     const spAfter = screenshot('03-after-submit');
     await page.screenshot({ path: spAfter, fullPage: true });
 
     const url = page.url();
-    const successHint = await page.locator('text=/Dashboard|Logout|Sign out|控制台|面板/i').first().count();
-    const stillOnLogin = /\/auth\/login/i.test(url);
+    const successHint = await page.locator('text=/Dashboard|Logout|Sign out|控制台|面板/i').count();
 
-    if (!stillOnLogin || successHint > 0) {
-      await notifyTelegram({ ok: true, stage: '登录成功', msg: `当前 URL：${url}`, screenshotPath: spAfter });
-
-      
-
+    if (successHint > 0 || !/\/login/i.test(url)) {
+      await notifyTelegram({ ok: true, stage: '登录成功', msg: `URL：${url}`, screenshotPath: spAfter });
       process.exitCode = 0;
-      return;
+    } else {
+      await notifyTelegram({ ok: false, stage: '登录失败', msg: '仍在登录页', screenshotPath: spAfter });
+      process.exitCode = 1;
     }
-
-    // 登录失败处理
-    const errorMsgNode = page.locator('text=/Invalid|incorrect|错误|失败|无效/i');
-    const hasError = await errorMsgNode.count();
-    const errorMsg = hasError ? await errorMsgNode.first().innerText().catch(() => '') : '';
-    await notifyTelegram({
-      ok: false,
-      stage: '登录失败',
-      msg: errorMsg ? `疑似失败（${errorMsg}）` : '仍在登录页',
-      screenshotPath: spAfter
-    });
-    process.exitCode = 1;
   } catch (e) {
     const sp = screenshot('99-error');
     try { await page.screenshot({ path: sp, fullPage: true }); } catch {}
-    await notifyTelegram({ ok: false, stage: '异常', msg: e?.message || String(e), screenshotPath: fs.existsSync(sp) ? sp : undefined });
+    await notifyTelegram({ ok: false, stage: '异常', msg: e?.message || String(e), screenshotPath: sp });
     process.exitCode = 1;
   } finally {
     await context.close();
