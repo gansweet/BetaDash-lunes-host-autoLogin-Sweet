@@ -43,23 +43,31 @@ async function sendTelegramPhoto(filePath, caption = '') {
         const page = await browser.newPage();
         await page.goto(LOGIN_URL, { waitUntil: 'networkidle2' });
 
-        await page.type('input[name="username"]', USERNAME);
+        // ✅ 改正选择器
+        await page.waitForSelector('input[name="email"]', { timeout: 30000 });
+        await page.type('input[name="email"]', USERNAME);
+
+        await page.waitForSelector('input[name="password"]', { timeout: 30000 });
         await page.type('input[name="password"]', PASSWORD);
+
         await Promise.all([
             page.click('button[type="submit"]'),
             page.waitForNavigation({ waitUntil: 'networkidle2' })
         ]);
 
         const currentUrl = page.url();
+        const screenshotPath = 'login-success.png';
+        await page.screenshot({ path: screenshotPath, fullPage: true });
+
         if (currentUrl.includes('/dashboard')) {
             await sendTelegramMessage(`✅ 登录成功: ${currentUrl}`);
+            await sendTelegramPhoto(screenshotPath, '登录成功截图');
         } else {
             throw new Error('登录失败，未进入 Dashboard 页面');
         }
 
     } catch (error) {
         console.error('登录过程出错:', error.message);
-
         const screenshotPath = 'login-error.png';
         if (browser) {
             const pages = await browser.pages();
