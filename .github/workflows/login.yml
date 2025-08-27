@@ -28,7 +28,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          npm install playwright playwright-extra playwright-extra-plugin-stealth form-data node-fetch
+          npm ci || npm install
+          npm install playwright playwright-extra playwright-stealth form-data node-fetch
           npx playwright install --with-deps chromium
 
       - name: Run login script
@@ -46,5 +47,5 @@ jobs:
           if-no-files-found: ignore
 
       - name: Fail if login failed
-        if: failure()  # 如果上一步失败，整个任务失败
+        if: failure()
         run: exit 1
