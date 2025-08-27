@@ -1,21 +1,14 @@
-name: Lunes Auto Login (keepalive-Sweet-Node6-US)
+
+name: Auto Login & Telegram Report(keepalive-Sweet-Node6-US)
 
 on:
   workflow_dispatch:
   schedule:
-    # 每天 UTC 23:00（约等于亚洲 07:00）执行一次
-    - cron: "0 23 * * *"
+    - cron: "0 */6 * * *" # 每 6 小时运行一次
 
 jobs:
-  login:
+  auto-login:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    env:
-      LUNES_USERNAME: ${{ secrets.LUNES_USERNAME }}
-      LUNES_PASSWORD: ${{ secrets.LUNES_PASSWORD }}
-      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
     steps:
       - name: Checkout
@@ -26,19 +19,16 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install dependencies
+      - name: Install Dependencies
         run: |
-          npm ci || npm install
-          npx playwright install --with-deps chromium
+          npm install puppeteer node-fetch form-data
 
-      - name: Run login script
-        run: npm run login
-
-      - name: Upload screenshots
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: screenshots
-          path: |
-            *.png
-          if-no-files-found: ignore
+      - name: Run Auto Login Script
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          LOGIN_URL: ${{ secrets.LOGIN_URL }}
+          LOGIN_USERNAME: ${{ secrets.LOGIN_USERNAME }}
+          LOGIN_PASSWORD: ${{ secrets.LOGIN_PASSWORD }}
+        run: |
+          node scripts/login.js
