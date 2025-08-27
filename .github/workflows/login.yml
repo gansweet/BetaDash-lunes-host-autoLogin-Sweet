@@ -1,22 +1,11 @@
-name: Lunes Auto Login (keepaliveSweet-Node6-US)
+name: Lunes Auto Login(keepaliveSweet-Node6-US)
 
 on:
   workflow_dispatch:
-  schedule:
-    # 每天 UTC 22:00 运行，对应亚洲/曼谷 UTC+7 的 05:00
-    - cron: "0 22 * * *"
 
 jobs:
   login:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    env:
-      LUNES_USERNAME: ${{ secrets.LUNES_USERNAME }}
-      LUNES_PASSWORD: ${{ secrets.LUNES_PASSWORD }}
-      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,28 +13,17 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 18
 
       - name: Install dependencies
         run: |
-          npm ci || npm install
-          npm install playwright playwright-extra playwright-stealth form-data node-fetch
+          npm install
           npx playwright install --with-deps chromium
 
       - name: Run login script
-        id: run-login
-        run: |
-          node scripts/login.js
-
-      - name: Archive screenshots
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: screenshots-and-logs
-          path: |
-            *.png
-          if-no-files-found: ignore
-
-      - name: Fail if login failed
-        if: failure()
-        run: exit 1
+        run: node login.js
+        env:
+          LUNES_USERNAME: ${{ secrets.LUNES_USERNAME }}
+          LUNES_PASSWORD: ${{ secrets.LUNES_PASSWORD }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
