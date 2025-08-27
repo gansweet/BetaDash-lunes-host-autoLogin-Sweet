@@ -1,10 +1,10 @@
-name: Lunes Auto Login(keepaliveSweet-Node6-US)
+name: Lunes Auto Login (keepaliveSweet-Node6-US)
 
 on:
   workflow_dispatch:
   schedule:
-    # 每天北京/河内/曼谷时区（UTC+7）07:00 执行一次（按需调整）
-    - cron: "0 22 * * *"  # GitHub 使用 UTC，这里是 UTC 23:00 ≈ 亚洲/曼谷 07:00
+    # 每天 UTC 22:00 运行，对应亚洲/曼谷 UTC+7 的 05:00
+    - cron: "0 22 * * *"
 
 jobs:
   login:
@@ -12,7 +12,6 @@ jobs:
     timeout-minutes: 10
 
     env:
-      # 从 GitHub Secrets 注入
       LUNES_USERNAME: ${{ secrets.LUNES_USERNAME }}
       LUNES_PASSWORD: ${{ secrets.LUNES_PASSWORD }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -27,22 +26,17 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install deps
+      - name: Install dependencies
         run: |
-          npm ci || npm i
+          npm install playwright playwright-extra playwright-extra-plugin-stealth form-data node-fetch
           npx playwright install --with-deps chromium
-       run: |
-          npm install playwright-extra playwright-extra-plugin-stealth
 
-
-      - name: Run login
+      - name: Run login script
+        id: run-login
         run: |
-          node -v
-          npm -v
-          npm run login
-        continue-on-error: true
+          node scripts/login.js
 
-      - name: Archive screenshots & logs
+      - name: Archive screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -51,6 +45,6 @@ jobs:
             *.png
           if-no-files-found: ignore
 
-      - name: Fail job if script failed
-        if: ${{ steps.login.outcome == 'failure' }}
+      - name: Fail if login failed
+        if: failure()  # 如果上一步失败，整个任务失败
         run: exit 1
