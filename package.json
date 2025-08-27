@@ -1,16 +1,15 @@
 {
-  "name": "lunes-login",
+  "name": "lunes-auto-login",
   "version": "1.0.0",
-  "description": "Automated login and screenshot sender for Lunes dashboard",
-  "main": "login.js",
+  "type": "module",
   "scripts": {
     "start": "node login.js"
   },
   "dependencies": {
-    "playwright": "^1.45.0",
+    "playwright": "^1.46.0",
     "playwright-extra": "^4.3.6",
-    "playwright-extra-plugin-stealth": "^2.11.2",
-    "form-data": "^4.0.0",
-    "node-fetch": "^2.6.7"
+    "playwright-extra-plugin-stealth": "^2.11.0",
+    "node-fetch": "^3.3.2",
+    "form-data": "^4.0.0"
   }
 }
