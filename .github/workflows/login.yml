@@ -1,9 +1,9 @@
-name: Auto Login Lunes
+name: Auto Login Lunes（keepalive-amos-n6-US)
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 */6 * * *" # 每6小时运行一次
+    - cron: "0 23 * * *" # 每天7时运行一次
 
 jobs:
   login:
