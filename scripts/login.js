@@ -1,70 +1,76 @@
 import { chromium } from 'playwright';
 import fs from 'fs';
-import fetch from 'node-fetch';
+import path from 'path';
+import axios from 'axios';
 
-const USERNAME = process.env.LUNES_USERNAME;
-const PASSWORD = process.env.LUNES_PASSWORD;
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const username = process.env.LUNES_USERNAME;
+const password = process.env.LUNES_PASSWORD;
+const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
+const telegramChatId = process.env.TELEGRAM_CHAT_ID;
+
 const LOGIN_URL = 'https://betadash.lunes.host/login?next=/servers/35991';
+
+async function sendTelegram(message, screenshotPath = null) {
+  const url = `https://api.telegram.org/bot${telegramToken}/sendMessage`;
+  await axios.post(url, {
+    chat_id: telegramChatId,
+    text: message,
+    parse_mode: 'HTML'
+  });
+
+  if (screenshotPath && fs.existsSync(screenshotPath)) {
+    const photoUrl = `https://api.telegram.org/bot${telegramToken}/sendPhoto`;
+    const form = new FormData();
+    form.append('chat_id', telegramChatId);
+    form.append('photo', fs.createReadStream(screenshotPath));
+    await axios.post(photoUrl, form, { headers: form.getHeaders() });
+  }
+}
 
 (async () => {
   const browser = await chromium.launch({
-    headless: true, // GitHub Actions必须headless
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
+    headless: true,
+    args: ['--disable-blink-features=AutomationControlled']
   });
   const context = await browser.newContext({
-    viewport: { width: 1280, height: 800 },
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36'
+    userAgent:
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36',
+    viewport: { width: 1280, height: 800 }
   });
 
   const page = await context.newPage();
+  const screenshotPath = path.join(process.cwd(), 'login_result.png');
 
   try {
-    console.log('▶ 打开登录页面...');
     await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-    // 检测是否有Cloudflare验证
-    if (await page.$('input[name="email"]') === null) {
-      console.log('⚠ 检测到Cloudflare人机验证，尝试等待并处理...');
+    // 检测 Cloudflare 按钮验证
+    const cfVerifyButton = page.locator('input[type="checkbox"], button:has-text("Verify")');
+    if (await cfVerifyButton.isVisible({ timeout: 5000 }).catch(() => false)) {
+      console.log('Cloudflare 验证：点击按钮...');
+      await cfVerifyButton.click({ delay: 500 });
       await page.waitForTimeout(5000);
-      if (await page.$('iframe')) {
-        console.log('⚠ 页面包含iframe验证，尝试模拟点击...');
-        const frame = page.frameLocator('iframe');
-        await frame.locator('input[type="checkbox"]').click({ timeout: 20000 });
-        await page.waitForTimeout(5000);
-      }
     }
 
-    console.log('▶ 输入账号信息...');
-    await page.fill('input[name="email"]', USERNAME);
-    await page.fill('input[name="password"]', PASSWORD);
-
-    console.log('▶ 点击登录...');
+    // 输入账号密码
+    await page.waitForSelector('input[name="email"]', { timeout: 15000 });
+    await page.fill('input[name="email"]', username);
+    await page.fill('input[name="password"]', password);
     await page.click('button[type="submit"]');
 
-    await page.waitForTimeout(5000);
+    // 等待跳转完成
+    await page.waitForURL('**/servers/**', { timeout: 20000 });
 
-    // 登录成功后截图
-    const screenshotPath = 'screenshot.png';
+    // 截图结果
     await page.screenshot({ path: screenshotPath, fullPage: true });
 
-    console.log('▶ 发送截图到Telegram...');
-    const fileBuffer = fs.readFileSync(screenshotPath);
-    const tgUrl = `https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`;
-    const formData = new FormData();
-    formData.append('chat_id', CHAT_ID);
-    formData.append('photo', new Blob([fileBuffer]), 'screenshot.png');
-    formData.append('caption', '✅ 登录成功，以下为页面截图');
+    await sendTelegram('✅ 登录成功并完成验证', screenshotPath);
+    console.log('登录成功，截图已发送至 Telegram');
 
-    await fetch(tgUrl, {
-      method: 'POST',
-      body: formData
-    });
-
-    console.log('✅ Telegram 通知发送成功');
-  } catch (err) {
-    console.error('❌ 登录失败:', err);
+  } catch (error) {
+    console.error('登录过程出错：', error.message);
+    await page.screenshot({ path: screenshotPath, fullPage: true });
+    await sendTelegram(`❌ 登录失败：${error.message}`, screenshotPath);
     process.exit(1);
   } finally {
     await browser.close();
