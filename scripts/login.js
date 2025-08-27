@@ -6,8 +6,8 @@ import FormData from 'form-data';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const LOGIN_URL = process.env.LOGIN_URL || 'https://betadash.lunes.host/login';
-const USERNAME = process.env.LOGIN_USERNAME;
-const PASSWORD = process.env.LOGIN_PASSWORD;
+const USERNAME = process.env.LUNES_USERNAME;
+const PASSWORD = process.env.LUNES_PASSWORD;
 
 async function sendTelegramMessage(text) {
     const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
