@@ -31,6 +31,9 @@ jobs:
         run: |
           npm ci || npm i
           npx playwright install --with-deps chromium
+       run: |
+          npm install playwright-extra playwright-extra-plugin-stealth
+
 
       - name: Run login
         run: |
