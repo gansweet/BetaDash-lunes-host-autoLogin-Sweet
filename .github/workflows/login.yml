@@ -1,4 +1,4 @@
-name: Auto Login Lunes（keepalive-amos-n6-US)
+name: Auto Login Lunes（keepalive-sweet-n6-US)
 
 on:
   workflow_dispatch:
