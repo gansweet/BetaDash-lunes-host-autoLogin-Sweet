@@ -1,78 +1,75 @@
-import { chromium } from 'playwright';
-import fs from 'fs';
-import path from 'path';
-import axios from 'axios';
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+const path = require('path');
+const fs = require('fs');
+require('dotenv').config();
 
-const username = process.env.LUNES_USERNAME;
-const password = process.env.LUNES_PASSWORD;
-const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
-const telegramChatId = process.env.TELEGRAM_CHAT_ID;
-
-const LOGIN_URL = 'https://betadash.lunes.host/login?next=/servers/35991';
-
-async function sendTelegram(message, screenshotPath = null) {
-  const url = `https://api.telegram.org/bot${telegramToken}/sendMessage`;
-  await axios.post(url, {
-    chat_id: telegramChatId,
-    text: message,
-    parse_mode: 'HTML'
-  });
-
-  if (screenshotPath && fs.existsSync(screenshotPath)) {
-    const photoUrl = `https://api.telegram.org/bot${telegramToken}/sendPhoto`;
-    const form = new FormData();
-    form.append('chat_id', telegramChatId);
-    form.append('photo', fs.createReadStream(screenshotPath));
-    await axios.post(photoUrl, form, { headers: form.getHeaders() });
-  }
-}
+puppeteer.use(StealthPlugin());
 
 (async () => {
-  const browser = await chromium.launch({
+  const browser = await puppeteer.launch({
     headless: true,
-    args: ['--disable-blink-features=AutomationControlled']
-  });
-  const context = await browser.newContext({
-    userAgent:
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36',
-    viewport: { width: 1280, height: 800 }
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
 
-  const page = await context.newPage();
-  const screenshotPath = path.join(process.cwd(), 'login_result.png');
+  const page = await browser.newPage();
+  page.setDefaultTimeout(60000);
 
+  console.log('🌐 打开登录页面...');
+  await page.goto('https://betadash.lunes.host/login?next=/servers/35991', {
+    waitUntil: 'networkidle2',
+  });
+
+  // 等待邮箱输入框
+  console.log('⌛ 等待邮箱输入框...');
+  await page.waitForSelector('input[name="email"]', { visible: true });
+
+  // 输入邮箱和密码
+  await page.type('input[name="email"]', process.env.EMAIL, { delay: 50 });
+  await page.type('input[name="password"]', process.env.PASSWORD, { delay: 50 });
+
+  // 点击登录按钮
+  await page.click('button[type="submit"]');
+  console.log('✅ 已点击登录按钮，等待验证...');
+
+  // 处理 Cloudflare 验证
   try {
-    await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
-
-    // 检测 Cloudflare 按钮验证
-    const cfVerifyButton = page.locator('input[type="checkbox"], button:has-text("Verify")');
-    if (await cfVerifyButton.isVisible({ timeout: 5000 }).catch(() => false)) {
-      console.log('Cloudflare 验证：点击按钮...');
-      await cfVerifyButton.click({ delay: 500 });
-      await page.waitForTimeout(5000);
+    await page.waitForSelector('#cf-stage > div iframe', { timeout: 15000 });
+    console.log('🔍 检测到 Cloudflare 验证框，尝试点击 Verify 按钮...');
+    const frames = page.frames();
+    for (const frame of frames) {
+      const checkbox = await frame.$('input[type="checkbox"]');
+      if (checkbox) {
+        await checkbox.click();
+        console.log('✅ 已点击 Cloudflare 验证按钮');
+        break;
+      }
     }
-
-    // 输入账号密码
-    await page.waitForSelector('input[name="email"]', { timeout: 15000 });
-    await page.fill('input[name="email"]', username);
-    await page.fill('input[name="password"]', password);
-    await page.click('button[type="submit"]');
-
-    // 等待跳转完成
-    await page.waitForURL('**/servers/**', { timeout: 20000 });
-
-    // 截图结果
-    await page.screenshot({ path: screenshotPath, fullPage: true });
-
-    await sendTelegram('✅ 登录成功并完成验证', screenshotPath);
-    console.log('登录成功，截图已发送至 Telegram');
-
-  } catch (error) {
-    console.error('登录过程出错：', error.message);
-    await page.screenshot({ path: screenshotPath, fullPage: true });
-    await sendTelegram(`❌ 登录失败：${error.message}`, screenshotPath);
-    process.exit(1);
-  } finally {
-    await browser.close();
+  } catch {
+    console.log('⚠️ 未检测到 Cloudflare 验证框，可能没有验证步骤');
   }
+
+  // 等待登录完成
+  await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
+  console.log('✅ 登录成功，截图保存中...');
+
+  const screenshotPath = path.join(__dirname, 'screenshot.png');
+  await page.screenshot({ path: screenshotPath, fullPage: true });
+
+  // 发送到 Telegram
+  if (process.env.TELEGRAM_TOKEN && process.env.TELEGRAM_CHAT_ID) {
+    const axios = require('axios');
+    const formData = new FormData();
+    formData.append('chat_id', process.env.TELEGRAM_CHAT_ID);
+    formData.append('photo', fs.createReadStream(screenshotPath));
+
+    await axios.post(
+      `https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/sendPhoto`,
+      formData,
+      { headers: formData.getHeaders() }
+    );
+    console.log('✅ 截图已发送到 Telegram');
+  }
+
+  await browser.close();
 })();
