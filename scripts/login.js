@@ -1,6 +1,7 @@
 // scripts/login.js
 import { chromium } from '@playwright/test';
 import fs from 'fs';
+import FormData from 'form-data';
 
 const LOGIN_URL = 'https://betadash.lunes.host/login?next=/servers/35991';
 
@@ -69,8 +70,8 @@ async function main() {
     // 1) 打开登录页
     await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 60_000 });
 
-    // 检查人机验证
-    const humanCheckText = await page.locator('text=/Verify you are human|需要验证|安全检查|review the security/i').first();
+    // 检查是否有 Cloudflare 安全检查
+    const humanCheckText = await page.locator('text=/Verify you are human|安全检查|review the security/i').first();
     if (await humanCheckText.count()) {
       const sp = screenshot('01-human-check');
       await page.screenshot({ path: sp, fullPage: true });
@@ -80,7 +81,7 @@ async function main() {
     }
 
     // 2) 输入用户名密码
-    const userInput = page.locator('input[name="username"]');
+    const userInput = page.locator('input[name="username"], input[name="email"]');
     const passInput = page.locator('input[name="password"]');
     await userInput.waitFor({ state: 'visible', timeout: 30_000 });
     await passInput.waitFor({ state: 'visible', timeout: 30_000 });
@@ -88,38 +89,40 @@ async function main() {
     await userInput.fill(username);
     await passInput.fill(password);
 
-    const loginBtn = page.locator('button[type="submit"]');
-    await loginBtn.waitFor({ state: 'visible', timeout: 15_000 });
+    const submitBtn = page.locator('button[type="submit"]');
+    await submitBtn.waitFor({ state: 'visible', timeout: 15_000 });
 
+    // 3) 检查 Cloudflare 验证 iframe（如果有）
+    const cfIframe = page.frameLocator('iframe[title*="Cloudflare"]').first();
+    if (await cfIframe.locator('input[type="checkbox"]').count()) {
+      console.log('[INFO] 检测到 Cloudflare 人机验证，开始勾选...');
+      await cfIframe.locator('input[type="checkbox"]').click({ timeout: 15_000 });
+      await page.waitForTimeout(5000); // 等待 Cloudflare 完成验证
+    }
+
+    // 4) 截图，点击 Submit
     const spBefore = screenshot('02-before-submit');
     await page.screenshot({ path: spBefore, fullPage: true });
 
     await Promise.all([
-      page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => {}),
-      loginBtn.click({ timeout: 10_000 })
+      page.waitForNavigation({ waitUntil: 'networkidle', timeout: 30_000 }).catch(() => {}),
+      submitBtn.click()
     ]);
 
-   
-    
-    // 3) 登录结果截图
+    // 5) 登录后截图
     const spAfter = screenshot('03-after-submit');
     await page.screenshot({ path: spAfter, fullPage: true });
 
     const url = page.url();
     const successHint = await page.locator('text=/Dashboard|Logout|Sign out|控制台|面板/i').first().count();
-    const stillOnLogin = /\/auth\/login/i.test(url);
+    const stillOnLogin = /\/login/i.test(url);
 
-    
     if (!stillOnLogin || successHint > 0) {
       await notifyTelegram({ ok: true, stage: '登录成功', msg: `当前 URL：${url}`, screenshotPath: spAfter });
-
-      
       process.exitCode = 0;
       return;
     }
 
-    
-    
     // 登录失败处理
     const errorMsgNode = page.locator('text=/Invalid|incorrect|错误|失败|无效/i');
     const hasError = await errorMsgNode.count();
