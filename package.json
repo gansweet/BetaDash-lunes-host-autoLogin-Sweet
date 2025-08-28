@@ -1,15 +1,14 @@
 {
-  "name": "lunes-auto-login",
+  "name": "lunes-keepalive",
   "version": "1.0.0",
-  "private": true,
-  "license": "MIT",
+  "main": "index.js",
   "type": "module",
   "scripts": {
-    "login": "node scripts/login.js"
+    "keepalive": "node keepalive.js"
   },
   "dependencies": {
-    "playwright": "^1.46.0",
-    "@playwright/test": "^1.46.0"
+    "axios": "^1.6.0",
+    "form-data": "^4.0.0"
   }
 }
 
