@@ -3,7 +3,7 @@ name: Lunes Auto Keepalive (KeepaliveSweet-Node6-US-Cookie-Based)
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 */6 * * *" # 每6小时一次
+    - cron: "0 22 * * *" # 每天6时一次
 
 jobs:
   keepalive:
