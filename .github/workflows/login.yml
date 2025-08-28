@@ -34,10 +34,12 @@ jobs:
       - name: Run login script
         id: login
         run: |
+          set -e
+          echo "Node.js version:"
           node -v
+          echo "NPM version:"
           npm -v
           npm run login
-        continue-on-error: true
 
       - name: Archive screenshots & logs
         if: always()
@@ -46,8 +48,11 @@ jobs:
           name: screenshots-and-logs
           path: |
             *.png
+            *.log
           if-no-files-found: ignore
 
       - name: Fail job if script failed
-        if: ${{ steps.login.outcome == 'failure' }}
-     
+        if: ${{ failure() }}
+        run: |
+          echo "❌ Login script failed."
+          exit 1
