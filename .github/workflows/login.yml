@@ -1,10 +1,10 @@
-name: Lunes Auto Login(keepaliveSweet-Node6-US)
+name: Lunes Auto Login (KeepaliveSweet-Node6-US)
 
 on:
   workflow_dispatch:
   schedule:
-    # 每天北京/河内/曼谷时区（UTC+7）06:00 执行一次（按需调整）
-    - cron: "0 22 * * *"  # GitHub 使用 UTC，这里是 UTC 23:00 ≈ 亚洲/曼谷 06:00
+    # 每天北京时间 (UTC+8) 06:00 对应 UTC 22:00
+    - cron: "0 22 * * *"
 
 jobs:
   login:
@@ -12,14 +12,13 @@ jobs:
     timeout-minutes: 10
 
     env:
-      # 从 GitHub Secrets 注入
       LUNES_USERNAME: ${{ secrets.LUNES_USERNAME }}
       LUNES_PASSWORD: ${{ secrets.LUNES_PASSWORD }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Node.js
@@ -27,12 +26,13 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install deps
+      - name: Install dependencies
         run: |
-          npm ci || npm i
+          npm install
           npx playwright install --with-deps chromium
 
-      - name: Run login
+      - name: Run login script
+        id: login
         run: |
           node -v
           npm -v
