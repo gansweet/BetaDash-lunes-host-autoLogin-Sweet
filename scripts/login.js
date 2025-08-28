@@ -5,15 +5,11 @@ import FormData from 'form-data';
 
 const LOGIN_URL = 'https://betadash.lunes.host/login?next=/servers/35991';
 
-// Telegram 通知
 async function notifyTelegram({ ok, stage, msg, screenshotPath }) {
   try {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
-    if (!token || !chatId) {
-      console.log('[WARN] TELEGRAM_BOT_TOKEN 或 TELEGRAM_CHAT_ID 未设置，跳过通知');
-      return;
-    }
+    if (!token || !chatId) return;
 
     const text = [
       `🔔 Lunes 自动操作：${ok ? '✅ 成功' : '❌ 失败'}`,
@@ -25,14 +21,9 @@ async function notifyTelegram({ ok, stage, msg, screenshotPath }) {
     await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        disable_web_page_preview: true
-      })
+      body: JSON.stringify({ chat_id: chatId, text })
     });
 
-    // 如果有截图，再发图
     if (screenshotPath && fs.existsSync(screenshotPath)) {
       const photoUrl = `https://api.telegram.org/bot${token}/sendPhoto`;
       const form = new FormData();
@@ -58,76 +49,67 @@ async function main() {
 
   const browser = await chromium.launch({
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-blink-features=AutomationControlled'
+    ]
   });
 
-  const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });
-  const page = await context.newPage();
+  const context = await browser.newContext({
+    viewport: { width: 1366, height: 768 },
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119 Safari/537.36',
+    locale: 'en-US'
+  });
 
+  const page = await context.newPage();
   const screenshot = (name) => `./${name}.png`;
 
   try {
-    // 1) 打开登录页
-    await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+    // 1. 打开登录页
+    await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-    // 2) 输入用户名密码
-    const userInput = page.locator('input[name="username"], input[name="email"]');
-    const passInput = page.locator('input[name="password"]');
-    await userInput.waitFor({ state: 'visible', timeout: 30_000 });
-    await passInput.waitFor({ state: 'visible', timeout: 30_000 });
+    // 2. 输入用户名密码
+    await page.fill('input[name="email"]', username);
+    await page.fill('input[name="password"]', password);
 
-    await userInput.fill(username);
-    await passInput.fill(password);
-
-    const submitBtn = page.locator('button[type="submit"]');
-    await submitBtn.waitFor({ state: 'visible', timeout: 15_000 });
-
-    // 3) 检查 Cloudflare 验证 iframe（如果有）
-    const cfIframe = page.frameLocator('iframe[title*="Cloudflare"]').first();
-    if (await cfIframe.locator('input[type="checkbox"]').count()) {
-      console.log('[INFO] 检测到 Cloudflare 人机验证，开始勾选...');
-      await cfIframe.locator('input[type="checkbox"]').click({ timeout: 15_000 });
-      await page.waitForTimeout(5000); // 等待 Cloudflare 完成验证
+    // 3. 检测 Cloudflare 验证 iframe
+    const cfIframeSelector = 'iframe[src*="challenges.cloudflare.com"]';
+    if (await page.locator(cfIframeSelector).count()) {
+      console.log('[INFO] 检测到 Cloudflare 验证，等待自动放行...');
+      // 等待验证通过（iframe 消失）
+      await page.waitForSelector(cfIframeSelector, { state: 'detached', timeout: 30000 }).catch(() => {});
     }
 
-    // 4) 截图，点击 Submit
+    // 4. 截图，点击 Submit
     const spBefore = screenshot('02-before-submit');
     await page.screenshot({ path: spBefore, fullPage: true });
 
-    await Promise.all([
-      page.waitForNavigation({ waitUntil: 'networkidle', timeout: 30_000 }).catch(() => {}),
-      submitBtn.click()
-    ]);
+    const submitBtn = page.locator('button[type="submit"]');
+    await submitBtn.click({ timeout: 15000 });
 
-    // 5) 登录后截图
+    // 等待跳转完成
+    await page.waitForLoadState('networkidle', { timeout: 30000 });
+
+    // 5. 登录后截图
     const spAfter = screenshot('03-after-submit');
     await page.screenshot({ path: spAfter, fullPage: true });
 
     const url = page.url();
-    const successHint = await page.locator('text=/Dashboard|Logout|Sign out|控制台|面板/i').first().count();
-    const stillOnLogin = /\/login/i.test(url);
-
-    if (!stillOnLogin || successHint > 0) {
-      await notifyTelegram({ ok: true, stage: '登录成功', msg: `当前 URL：${url}`, screenshotPath: spAfter });
+    const successHint = await page.locator('text=/Dashboard|Logout|Sign out|控制台/i').count();
+    if (successHint > 0 || !/\/login/.test(url)) {
+      await notifyTelegram({ ok: true, stage: '登录成功', msg: `URL：${url}`, screenshotPath: spAfter });
       process.exitCode = 0;
       return;
     }
 
-    // 登录失败处理
-    const errorMsgNode = page.locator('text=/Invalid|incorrect|错误|失败|无效/i');
-    const hasError = await errorMsgNode.count();
-    const errorMsg = hasError ? await errorMsgNode.first().innerText().catch(() => '') : '';
-    await notifyTelegram({
-      ok: false,
-      stage: '登录失败',
-      msg: errorMsg ? `疑似失败（${errorMsg}）` : '仍在登录页',
-      screenshotPath: spAfter
-    });
+    // 登录失败
+    await notifyTelegram({ ok: false, stage: '登录失败', msg: '仍在登录页', screenshotPath: spAfter });
     process.exitCode = 1;
   } catch (e) {
     const sp = screenshot('99-error');
     try { await page.screenshot({ path: sp, fullPage: true }); } catch {}
-    await notifyTelegram({ ok: false, stage: '异常', msg: e?.message || String(e), screenshotPath: fs.existsSync(sp) ? sp : undefined });
+    await notifyTelegram({ ok: false, stage: '异常', msg: e.message, screenshotPath: sp });
     process.exitCode = 1;
   } finally {
     await context.close();
