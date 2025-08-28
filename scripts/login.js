@@ -70,16 +70,6 @@ async function main() {
     // 1) 打开登录页
     await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 60_000 });
 
-    // 检查是否有 Cloudflare 安全检查
-    const humanCheckText = await page.locator('text=/Verify you are human|安全检查|review the security/i').first();
-    if (await humanCheckText.count()) {
-      const sp = screenshot('01-human-check');
-      await page.screenshot({ path: sp, fullPage: true });
-      await notifyTelegram({ ok: false, stage: '打开登录页', msg: '检测到人机验证页面', screenshotPath: sp });
-      process.exitCode = 2;
-      return;
-    }
-
     // 2) 输入用户名密码
     const userInput = page.locator('input[name="username"], input[name="email"]');
     const passInput = page.locator('input[name="password"]');
