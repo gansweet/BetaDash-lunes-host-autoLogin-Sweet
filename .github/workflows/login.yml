@@ -1,19 +1,18 @@
-name: Lunes Auto Login (KeepaliveSweet-Node6-US)
+name: Lunes Auto KeepAlive (KeepaliveSweet-Node6-US-Cookie-Based)
 
 on:
   workflow_dispatch:
   schedule:
-    # 每天北京时间 (UTC+8) 06:00 对应 UTC 22:00
+    # 每天北京时间 06:00 (UTC+8) -> UTC 22:00
     - cron: "0 22 * * *"
 
 jobs:
-  login:
+  keepalive:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
     env:
-      LUNES_USERNAME: ${{ secrets.LUNES_USERNAME }}
-      LUNES_PASSWORD: ${{ secrets.LUNES_PASSWORD }}
+      LUNES_COOKIES: ${{ secrets.LUNES_COOKIES }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
@@ -27,32 +26,7 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: |
-          npm install
-          npx playwright install --with-deps chromium
+        run: npm install
 
-      - name: Run login script
-        id: login
-        run: |
-          set -e
-          echo "Node.js version:"
-          node -v
-          echo "NPM version:"
-          npm -v
-          npm run login
-
-      - name: Archive screenshots & logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: screenshots-and-logs
-          path: |
-            *.png
-            *.log
-          if-no-files-found: ignore
-
-      - name: Fail job if script failed
-        if: ${{ failure() }}
-        run: |
-          echo "❌ Login script failed."
-          exit 1
+      - name: Run keepalive script
+        run: npm run keepalive
