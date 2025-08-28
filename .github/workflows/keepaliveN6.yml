@@ -1,23 +1,21 @@
-name: Lunes Auto KeepAlive (KeepaliveSweet-Node6-US-Cookie-Based)
+name: Lunes Auto Keepalive (KeepaliveSweet-Node6-US-Cookie-Based)
 
 on:
   workflow_dispatch:
   schedule:
-    # 每天北京时间 06:00 (UTC+8) -> UTC 22:00
-    - cron: "0 22 * * *"
+    - cron: "0 */6 * * *" # 每6小时一次
 
 jobs:
   keepalive:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-
     env:
-      LUNES_COOKIES: ${{ secrets.LUNES_COOKIES }}
+      LUNES_COOKIE: ${{ secrets.LUNES_COOKIE }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Node.js
